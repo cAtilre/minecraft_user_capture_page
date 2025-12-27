@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Player Name</title>
+</head>
+<body>
+  <h2>Enter Player Name</h2>
+
+  <form method="POST" action="/submit">
+    <input
+      type="text"
+      name="playerName"
+      placeholder="Player name"
+      required
+    />
+    <button type="submit">Submit</button>
+  </form>
+
+  <p>Username must match: <code>^[a-zA-Z0-9_]{2,16}$</code></p>
+</body>
+</html>
