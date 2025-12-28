@@ -8,15 +8,32 @@
   <h2>Enter Player Name</h2>
 
   <form method="POST" action="/submit">
-    <input
-      type="text"
-      name="playerName"
-      placeholder="Player name"
-      required
-    />
-    <button type="submit">Submit</button>
-  </form>
+    <div>
+      <label for="playerName">Player Name:</label>
+      <input
+        type="text"
+        id="playerName"
+        name="playerName"
+        placeholder="Player name"
+        required
+      />
+      <p style="margin-top: 5px; font-size: 0.9em;">Username must match: <code>^[a-zA-Z0-9_]{2,16}$</code></p>
+    </div>
 
-  <p>Username must match: <code>^[a-zA-Z0-9_]{2,16}$</code></p>
+    <div style="margin-top: 20px;">
+      <label for="myIP">My IP:</label>
+      <input
+        type="text"
+        id="myIP"
+        name="myIP"
+        placeholder="Your public IP address"
+      />
+      <p style="margin-top: 5px; font-size: 0.9em;">
+        Click <a href="https://ifconfig.me/ip" target="_blank">here</a> to get your public IP address, then copy and paste it into the field above.
+      </p>
+    </div>
+
+    <button type="submit" style="margin-top: 20px;">Submit</button>
+  </form>
 </body>
 </html>

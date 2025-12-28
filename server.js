@@ -2,6 +2,7 @@ const express = require("express");
 const fs = require("fs");
 const path = require("path");
 const rateLimit = require("express-rate-limit");
+const https = require("https");
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -37,18 +38,61 @@ function getClientIp(req) {
   return req.ip || "unknown";
 }
 
-app.post("/submit", (req, res) => {
+function getMojangUUID(username) {
+  return new Promise((resolve) => {
+    const timestamp = Math.floor(Date.now() / 1000);
+    const url = `https://api.mojang.com/users/profiles/minecraft/${encodeURIComponent(username)}?at=${timestamp}`;
+
+    https.get(url, (res) => {
+      let data = "";
+
+      res.on("data", (chunk) => {
+        data += chunk;
+      });
+
+      res.on("end", () => {
+        try {
+          if (res.statusCode === 200) {
+            const result = JSON.parse(data);
+            resolve(result.id || null);
+          } else {
+            resolve(null);
+          }
+        } catch (err) {
+          resolve(null);
+        }
+      });
+    }).on("error", () => {
+      resolve(null);
+    });
+  });
+}
+
+app.post("/submit", async (req, res) => {
   const username = (req.body.playerName || "").trim();
+  const publicIp = (req.body.myIP || "").trim();
   const ip = getClientIp(req);
 
   const regex = /^[a-zA-Z0-9_]{2,16}$/;
   const valid = regex.test(username);
 
+  let uuid = null;
+  let uuidLookupError = null;
+
+  if (valid) {
+    uuid = await getMojangUUID(username);
+    if (uuid === null) {
+      uuidLookupError = "Username not found in Mojang database";
+    }
+  }
+
   const entry = {
     timestamp: new Date().toISOString(),
     username,
     valid,
-    ip
+    publicIp,
+    uuid: uuid || undefined,
+    uuidLookupError: uuidLookupError || undefined
   };
 
   fs.appendFile(logFile, JSON.stringify(entry) + "\n", err => {
