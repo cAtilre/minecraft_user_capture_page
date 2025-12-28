@@ -6,6 +6,9 @@ const rateLimit = require("express-rate-limit");
 const app = express();
 const PORT = process.env.PORT || 8080;
 
+// Trust proxy headers from nginx
+app.set('trust proxy', true);
+
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
@@ -31,11 +34,7 @@ const limiter = rateLimit({
 app.use(limiter);
 
 function getClientIp(req) {
-  return (
-    req.headers["x-forwarded-for"]?.split(",")[0] ||
-    req.socket.remoteAddress ||
-    "unknown"
-  );
+  return req.ip || "unknown";
 }
 
 app.post("/submit", (req, res) => {
