@@ -73,8 +73,13 @@ app.post("/submit", async (req, res) => {
   const publicIp = (req.body.myIP || "").trim();
   const ip = getClientIp(req);
 
-  const regex = /^[a-zA-Z0-9_]{2,16}$/;
-  const valid = regex.test(username);
+  const usernameRegex = /^[a-zA-Z0-9_]{2,16}$/;
+  const valid = usernameRegex.test(username);
+
+  // Validate IPv4 and IPv6 addresses
+  const ipv4Regex = /^(\d{1,3}\.){3}\d{1,3}$/;
+  const ipv6Regex = /^([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}$/;
+  const validIp = ipv4Regex.test(publicIp) || ipv6Regex.test(publicIp);
 
   let uuid = null;
   let uuidLookupError = null;
@@ -84,13 +89,16 @@ app.post("/submit", async (req, res) => {
     if (uuid === null) {
       uuidLookupError = "Username not found in Mojang database";
     }
+    if (!validIp) {
+      uuidLookupError = uuidLookupError + "; Invalid IP address";
+    }
   }
 
   const entry = {
     timestamp: new Date().toISOString(),
     username,
     valid,
-    publicIp,
+    publicIp: validIp ? publicIp : undefined,
     uuid: uuid || undefined,
     uuidLookupError: uuidLookupError || undefined
   };
@@ -99,6 +107,9 @@ app.post("/submit", async (req, res) => {
     if (err) console.error("Log write failed:", err);
   });
 
+  if (uuidLookupError !== null) {
+    return res.status(400).send(`Error: ${uuidLookupError}`);
+  }
   res.status(200).send("ok");
 });
 
