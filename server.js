@@ -3,6 +3,7 @@ const fs = require("fs");
 const path = require("path");
 const rateLimit = require("express-rate-limit");
 const https = require("https");
+const Database = require("better-sqlite3");
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -23,6 +24,24 @@ const logFile = path.join(logDir, "access.log");
 if (!fs.existsSync(logDir)) {
   fs.mkdirSync(logDir);
 }
+
+// Set up SQLite database
+const db = new Database(path.join(logDir, "submissions.db"));
+db.exec(`
+  CREATE TABLE IF NOT EXISTS submissions (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp TEXT NOT NULL,
+    username  TEXT NOT NULL,
+    valid     INTEGER NOT NULL,
+    public_ip TEXT,
+    uuid      TEXT,
+    uuid_error TEXT
+  )
+`);
+const insertStmt = db.prepare(`
+  INSERT INTO submissions (timestamp, username, valid, public_ip, uuid, uuid_error)
+  VALUES (@timestamp, @username, @valid, @publicIp, @uuid, @uuidLookupError)
+`);
 
 // Simple rate limit
 const limiter = rateLimit({
@@ -106,6 +125,19 @@ app.post("/submit", async (req, res) => {
   fs.appendFile(logFile, JSON.stringify(entry) + "\n", err => {
     if (err) console.error("Log write failed:", err);
   });
+
+  try {
+    insertStmt.run({
+      timestamp: entry.timestamp,
+      username: entry.username,
+      valid: entry.valid ? 1 : 0,
+      publicIp: entry.publicIp ?? null,
+      uuid: entry.uuid ?? null,
+      uuidLookupError: entry.uuidLookupError ?? null
+    });
+  } catch (dbErr) {
+    console.error("DB write failed:", dbErr);
+  }
 
   if (uuidLookupError !== null) {
     return res.status(400).send(`Error: ${uuidLookupError}`);
