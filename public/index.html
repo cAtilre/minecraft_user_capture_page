@@ -26,14 +26,27 @@
         type="text"
         id="myIP"
         name="myIP"
-        placeholder="Your public IP address"
+        placeholder="Detecting your IP…"
       />
-      <p style="margin-top: 5px; font-size: 0.9em;">
-        Click <a href="https://ifconfig.me/ip" target="_blank">here</a> to get your public IP address, then copy and paste it into the field above.
-      </p>
+      <p style="margin-top: 5px; font-size: 0.9em;" id="ipNote">Fetching your public IP address…</p>
     </div>
 
     <button type="submit" style="margin-top: 20px;">Submit</button>
   </form>
+
+  <script>
+    fetch("https://api.ipify.org?format=json")
+      .then(res => res.json())
+      .then(data => {
+        const field = document.getElementById("myIP");
+        const note = document.getElementById("ipNote");
+        field.value = data.ip;
+        note.textContent = "Your public IP address has been pre-filled. You may correct it if needed.";
+      })
+      .catch(() => {
+        const note = document.getElementById("ipNote");
+        note.textContent = "Could not detect your IP automatically. Please enter it manually.";
+      });
+  </script>
 </body>
 </html>
