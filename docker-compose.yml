@@ -1,0 +1,12 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      # Mount the logs directory from the host so players.json is accessible
+      # to the cron script running outside the container — same as production.
+      - ./logs:/app/logs
+    environment:
+      - PORT=8080
+    restart: unless-stopped

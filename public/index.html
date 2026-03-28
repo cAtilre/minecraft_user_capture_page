@@ -2,51 +2,87 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Player Name</title>
+  <title>Minecraft Access Request</title>
+  <style>
+    body { font-family: sans-serif; max-width: 520px; margin: 40px auto; padding: 0 16px; }
+    label { display: block; font-weight: bold; margin-bottom: 4px; }
+    input[type="text"] { width: 100%; box-sizing: border-box; padding: 6px 8px; font-size: 1em; }
+    .hint { margin: 4px 0 0; font-size: 0.85em; color: #555; }
+    .section { margin-top: 20px; }
+    .addr-note { margin: 8px 0 12px; font-size: 0.9em; color: #333; }
+    #formError { color: #c00; margin-top: 10px; display: none; }
+    button { margin-top: 24px; padding: 8px 24px; font-size: 1em; cursor: pointer; }
+  </style>
 </head>
 <body>
-  <h2>Enter Player Name</h2>
+  <h2>Minecraft Server Access Request</h2>
 
-  <form method="POST" action="/submit">
-    <div>
-      <label for="playerName">Player Name:</label>
-      <input
-        type="text"
-        id="playerName"
-        name="playerName"
-        placeholder="Player name"
-        required
-      />
-      <p style="margin-top: 5px; font-size: 0.9em;">Username must match: <code>^[a-zA-Z0-9_]{2,16}$</code></p>
+  <form method="POST" action="/submit" id="accessForm">
+
+    <div class="section">
+      <label for="playerName">Minecraft Username *</label>
+      <input type="text" id="playerName" name="playerName"
+             placeholder="Your Minecraft username" required />
+      <p class="hint">Must match <code>^[a-zA-Z0-9_]{2,16}$</code> and exist on Mojang.</p>
     </div>
 
-    <div style="margin-top: 20px;">
-      <label for="myIP">My IP:</label>
-      <input
-        type="text"
-        id="myIP"
-        name="myIP"
-        placeholder="Detecting your IP…"
-      />
-      <p style="margin-top: 5px; font-size: 0.9em;" id="ipNote">Fetching your public IP address…</p>
+    <div class="section">
+      <label for="realName">Real Name <span style="font-weight:normal;">(optional)</span></label>
+      <input type="text" id="realName" name="realName"
+             placeholder="Your real name — leave blank to use your Minecraft username" />
     </div>
 
-    <button type="submit" style="margin-top: 20px;">Submit</button>
+    <div class="section">
+      <p class="addr-note">
+        <strong>Network address</strong> — provide at least one of the following:
+      </p>
+
+      <div>
+        <label for="myIP">IP Address</label>
+        <input type="text" id="myIP" name="myIP" placeholder="Detecting your IP…" />
+        <p class="hint" id="ipNote">Fetching your public IP address…</p>
+      </div>
+
+      <div style="margin-top: 14px;">
+        <label for="myFQDN">Hostname / FQDN</label>
+        <input type="text" id="myFQDN" name="myFQDN"
+               placeholder="e.g. myhome.dyndns.org" />
+        <p class="hint">DynDNS, Cloudflare DDNS, No-IP, etc.</p>
+      </div>
+    </div>
+
+    <div id="formError"></div>
+    <button type="submit">Submit</button>
   </form>
 
   <script>
+    // Auto-detect public IP
     fetch("https://api.ipify.org?format=json")
-      .then(res => res.json())
+      .then(r => r.json())
       .then(data => {
-        const field = document.getElementById("myIP");
-        const note = document.getElementById("ipNote");
-        field.value = data.ip;
-        note.textContent = "Your public IP address has been pre-filled. You may correct it if needed.";
+        document.getElementById("myIP").value = data.ip;
+        document.getElementById("ipNote").textContent =
+          "Your public IP has been pre-filled. Correct it if needed.";
       })
       .catch(() => {
-        const note = document.getElementById("ipNote");
-        note.textContent = "Could not detect your IP automatically. Please enter it manually.";
+        document.getElementById("ipNote").textContent =
+          "Could not detect your IP automatically. Enter it manually if needed.";
       });
+
+    // Require at least one address field before submitting
+    document.getElementById("accessForm").addEventListener("submit", function (e) {
+      const ip   = document.getElementById("myIP").value.trim();
+      const fqdn = document.getElementById("myFQDN").value.trim();
+      const err  = document.getElementById("formError");
+      if (!ip && !fqdn) {
+        e.preventDefault();
+        err.textContent = "Please provide at least an IP address or a hostname.";
+        err.style.display = "block";
+      } else {
+        err.style.display = "none";
+      }
+    });
   </script>
 </body>
 </html>
+
