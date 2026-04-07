@@ -2,20 +2,219 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Minecraft Access Request</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" />
   <style>
-    body { font-family: sans-serif; max-width: 520px; margin: 40px auto; padding: 0 16px; }
-    label { display: block; font-weight: bold; margin-bottom: 4px; }
-    input[type="text"] { width: 100%; box-sizing: border-box; padding: 6px 8px; font-size: 1em; }
-    .hint { margin: 4px 0 0; font-size: 0.85em; color: #555; }
-    .section { margin-top: 20px; }
-    .addr-note { margin: 8px 0 12px; font-size: 0.9em; color: #333; }
-    #formError { color: #c00; margin-top: 10px; display: none; }
-    button { margin-top: 24px; padding: 8px 24px; font-size: 1em; cursor: pointer; }
+    /* ── 8-bit base ── */
+    *, *::before, *::after { box-sizing: border-box; }
+
+    body {
+      font-family: 'Press Start 2P', monospace;
+      font-size: 11px;
+      line-height: 1.8;
+      background: #1a1a2e;
+      color: #e0e0e0;
+      margin: 0;
+      padding: 32px 16px 64px;
+      image-rendering: pixelated;
+    }
+
+    /* Scanline overlay */
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background: repeating-linear-gradient(
+        to bottom,
+        transparent 0px,
+        transparent 3px,
+        rgba(0,0,0,0.18) 3px,
+        rgba(0,0,0,0.18) 4px
+      );
+      z-index: 999;
+    }
+
+    /* Card */
+    .card {
+      max-width: 560px;
+      margin: 0 auto;
+      background: #16213e;
+      border: 4px solid #00ff9f;
+      box-shadow: 6px 6px 0 #00b36e, inset 0 0 32px rgba(0,255,159,0.04);
+      padding: 28px 24px 32px;
+    }
+
+    /* Pixel-art heading */
+    h2 {
+      font-size: 13px;
+      color: #00ff9f;
+      text-shadow: 3px 3px 0 #005c38;
+      margin: 0 0 6px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    .subtitle {
+      font-size: 8px;
+      color: #6a6a9a;
+      margin: 0 0 28px;
+      text-transform: uppercase;
+    }
+
+    /* Sections */
+    .section { margin-top: 22px; }
+
+    label {
+      display: block;
+      font-size: 9px;
+      color: #7fff7f;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    /* Pixel inputs */
+    input[type="text"] {
+      width: 100%;
+      padding: 8px 10px;
+      font-family: 'Press Start 2P', monospace;
+      font-size: 10px;
+      background: #0d0d1a;
+      color: #00ff9f;
+      border: 3px solid #00804f;
+      outline: none;
+      caret-color: #00ff9f;
+      transition: border-color 0.1s;
+    }
+    input[type="text"]:focus { border-color: #00ff9f; box-shadow: 0 0 0 2px rgba(0,255,159,0.2); }
+    input[type="text"]::placeholder { color: #2a4a3a; }
+
+    .hint {
+      margin: 5px 0 0;
+      font-size: 7px;
+      color: #5a7a6a;
+      line-height: 1.6;
+    }
+    code {
+      color: #ffdd57;
+      background: #222;
+      padding: 1px 4px;
+      font-family: 'Press Start 2P', monospace;
+      font-size: 7px;
+    }
+
+    /* Button — pixel style */
+    button {
+      margin-top: 28px;
+      padding: 12px 24px;
+      font-family: 'Press Start 2P', monospace;
+      font-size: 10px;
+      color: #1a1a2e;
+      background: #00ff9f;
+      border: none;
+      outline: 3px solid #00b36e;
+      box-shadow: 4px 4px 0 #005c38;
+      cursor: pointer;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      transition: transform 0.05s, box-shadow 0.05s;
+    }
+    button:hover  { background: #5fffbf; }
+    button:active { transform: translate(4px,4px); box-shadow: none; }
+
+    /* Error */
+    #formError {
+      display: none;
+      margin-top: 14px;
+      padding: 8px 10px;
+      font-size: 8px;
+      color: #ff5555;
+      border: 2px solid #ff5555;
+      background: #2a0a0a;
+      text-transform: uppercase;
+    }
+
+    /* ── Collapsible advanced section ── */
+    .advanced-toggle {
+      margin-top: 22px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      user-select: none;
+      font-size: 8px;
+      color: #6a6aaa;
+      text-transform: uppercase;
+    }
+    .advanced-toggle:hover { color: #aaaaff; }
+    .advanced-toggle .arrow {
+      display: inline-block;
+      font-style: normal;
+      transition: transform 0.15s;
+      color: #00ff9f;
+    }
+    .advanced-toggle.open .arrow { transform: rotate(90deg); }
+
+    .advanced-body {
+      display: none;
+      margin-top: 10px;
+      padding: 14px;
+      border: 3px solid #2a2a5a;
+      background: #0d0d2a;
+    }
+    .advanced-body.open { display: block; }
+
+    /* ── IP disabled state ── */
+    .ip-section.disabled label { color: #2a4a3a; }
+    .ip-section.disabled input {
+      background: #0a0a14;
+      color: #1a3a2a;
+      border-color: #1a3a2a;
+      cursor: not-allowed;
+    }
+    .ip-section.disabled .hint { color: #1a2a22; }
+
+    /* ── FQDN fields ── */
+    .fqdn-fields { margin-top: 14px; display: none; }
+    .fqdn-fields.active { display: block; }
+
+    .use-fqdn-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 6px;
+    }
+    .use-fqdn-row input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      cursor: pointer;
+      accent-color: #00ff9f;
+    }
+    .use-fqdn-row label {
+      font-size: 8px;
+      font-weight: normal;
+      color: #aaaacc;
+      margin: 0;
+      cursor: pointer;
+      text-transform: uppercase;
+    }
+
+    /* Pixel divider */
+    hr {
+      border: none;
+      border-top: 3px solid #00804f;
+      margin: 24px 0 0;
+      box-shadow: 0 2px 0 #003322;
+    }
   </style>
 </head>
 <body>
-  <h2>Minecraft Server Access Request</h2>
+  <div class="card">
+    <h2>&#x26C0; Minecraft</h2>
+    <p class="subtitle">&#x25BA; Server access request</p>
+    <hr />
 
   <form method="POST" action="/submit" id="accessForm">
 
@@ -27,33 +226,45 @@
     </div>
 
     <div class="section">
-      <label for="realName">Real Name <span style="font-weight:normal;">(optional)</span></label>
+      <label for="realName">Real Name <span style="font-weight:normal;">(optional - but helps me keep track of players)</span></label>
       <input type="text" id="realName" name="realName"
              placeholder="Your real name — leave blank to use your Minecraft username" />
     </div>
 
-    <div class="section">
-      <p class="addr-note">
-        <strong>Network address</strong> — provide at least one of the following:
+    <div class="section ip-section" id="ipSection">
+      <label for="myIP">IP Address *</label>
+      <input type="text" id="myIP" name="myIP" placeholder="Detecting your IP…" />
+      <p class="hint" id="ipNote">Fetching your public IP address…</p>
+    </div>
+
+    <!-- Advanced: FQDN for dynamic DNS users -->
+    <div class="advanced-toggle" id="advToggle" role="button" tabindex="0"
+         aria-expanded="false" aria-controls="advBody">
+      <i class="arrow">&#9658;</i>
+      <span>Advanced — I use a dynamic DNS hostname (DynDNS, Cloudflare, No-IP…)</span>
+    </div>
+    <div class="advanced-body" id="advBody">
+      <p class="hint" style="margin:0 0 10px;">
+        Use this if your home IP changes frequently and you have a dynamic DNS service
+        (DynDNS, Cloudflare, No-IP, etc.) keeping a hostname pointed at your address.
+        When enabled, the firewall uses your hostname instead of your IP.
       </p>
 
-      <div>
-        <label for="myIP">IP Address</label>
-        <input type="text" id="myIP" name="myIP" placeholder="Detecting your IP…" />
-        <p class="hint" id="ipNote">Fetching your public IP address…</p>
+      <div class="use-fqdn-row">
+        <input type="checkbox" id="useFqdn" />
+        <label for="useFqdn">Use a dynamic DNS hostname instead of my IP address</label>
       </div>
 
-      <div style="margin-top: 14px;">
+      <div class="fqdn-fields" id="fqdnFields">
         <label for="myFQDN">Hostname / FQDN</label>
-        <input type="text" id="myFQDN" name="myFQDN"
-               placeholder="e.g. myhome.dyndns.org" />
-        <p class="hint">DynDNS, Cloudflare DDNS, No-IP, etc.</p>
+        <input type="text" id="myFQDN" name="myFQDN" placeholder="e.g. myhome.dyndns.org" />
       </div>
     </div>
 
     <div id="formError"></div>
-    <button type="submit">Submit</button>
+    <button type="submit">&#x25BA; Submit</button>
   </form>
+  </div>
 
   <script>
     // Auto-detect public IP
@@ -66,21 +277,65 @@
       })
       .catch(() => {
         document.getElementById("ipNote").textContent =
-          "Could not detect your IP automatically. Enter it manually if needed.";
+          "Could not detect your IP automatically. Enter it manually.";
       });
 
-    // Require at least one address field before submitting
-    document.getElementById("accessForm").addEventListener("submit", function (e) {
-      const ip   = document.getElementById("myIP").value.trim();
-      const fqdn = document.getElementById("myFQDN").value.trim();
-      const err  = document.getElementById("formError");
-      if (!ip && !fqdn) {
-        e.preventDefault();
-        err.textContent = "Please provide at least an IP address or a hostname.";
-        err.style.display = "block";
+    // Collapsible advanced section
+    const toggle     = document.getElementById("advToggle");
+    const advBody    = document.getElementById("advBody");
+    const useFqdn    = document.getElementById("useFqdn");
+    const fqdnFields = document.getElementById("fqdnFields");
+    const ipSection  = document.getElementById("ipSection");
+    const ipInput    = document.getElementById("myIP");
+    const fqdnInput  = document.getElementById("myFQDN");
+
+    function toggleAdv() {
+      const open = advBody.classList.toggle("open");
+      toggle.classList.toggle("open", open);
+      toggle.setAttribute("aria-expanded", open);
+    }
+    toggle.addEventListener("click", toggleAdv);
+    toggle.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleAdv(); } });
+
+    // Checkbox: toggle between IP mode and FQDN mode
+    function applyFqdnMode(active) {
+      fqdnFields.classList.toggle("active", active);
+      fqdnInput.required  = active;
+      fqdnInput.disabled  = !active;
+      ipSection.classList.toggle("disabled", active);
+      ipInput.disabled    = active;
+      // Clear the field that is now inactive so it isn't submitted
+      if (active) {
+        ipInput.dataset.savedValue = ipInput.value;
+        ipInput.value = "";
       } else {
-        err.style.display = "none";
+        ipInput.value = ipInput.dataset.savedValue || "";
+        fqdnInput.value = "";
       }
+    }
+    // Initialise: FQDN disabled by default
+    fqdnInput.disabled = true;
+    useFqdn.addEventListener("change", () => applyFqdnMode(useFqdn.checked));
+
+    // Validation on submit
+    document.getElementById("accessForm").addEventListener("submit", function (e) {
+      const err = document.getElementById("formError");
+      if (useFqdn.checked) {
+        if (!fqdnInput.value.trim()) {
+          e.preventDefault();
+          err.textContent = "Please enter a hostname / FQDN.";
+          err.style.display = "block";
+          return;
+        }
+      } else {
+        if (!ipInput.value.trim()) {
+          e.preventDefault();
+          err.textContent = "Please enter or confirm your IP address.";
+          err.style.display = "block";
+          return;
+        }
+      }
+      err.style.display = "none";
     });
   </script>
 </body>

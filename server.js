@@ -51,6 +51,11 @@ function getClientIp(req) {
 // Mojang UUID lookup
 // ---------------------------------------------------------------------------
 
+function hyphenateUUID(raw) {
+  // Mojang returns 32 hex chars without hyphens → reformat as 8-4-4-4-12
+  return `${raw.slice(0,8)}-${raw.slice(8,12)}-${raw.slice(12,16)}-${raw.slice(16,20)}-${raw.slice(20)}`;
+}
+
 function getMojangUUID(username) {
   return new Promise((resolve) => {
     const url = `https://api.mojang.com/users/profiles/minecraft/${encodeURIComponent(username)}`;
@@ -61,7 +66,7 @@ function getMojangUUID(username) {
         try {
           if (res.statusCode === 200) {
             const result = JSON.parse(data);
-            resolve(result.id || null);
+            resolve(result.id ? hyphenateUUID(result.id) : null);
           } else {
             resolve(null);
           }
