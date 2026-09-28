@@ -3,6 +3,7 @@ const fs = require("fs");
 const path = require("path");
 const rateLimit = require("express-rate-limit");
 const https = require("https");
+const archiver = require("archiver");
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -24,6 +25,197 @@ const playersFile = path.join(logDir, "players.json");
 if (!fs.existsSync(logDir)) {
   fs.mkdirSync(logDir, { recursive: true });
 }
+
+// ---------------------------------------------------------------------------
+// Mods file browser — read-only listing + zip download from /data/mods
+// ---------------------------------------------------------------------------
+
+const MODS_ROOT = path.resolve(process.env.MODS_DIR || "/data/mods");
+
+// Resolves a user-supplied relative path against MODS_ROOT, rejecting any
+// attempt to escape the root (e.g. via "..", absolute paths, symlinks).
+function resolveModsPath(relPath) {
+  const safeRel = path.normalize(relPath || ".").replace(/^(\.\.[/\\])+/, "");
+  const full = path.resolve(MODS_ROOT, safeRel);
+  const realRoot = fs.realpathSync(MODS_ROOT);
+  let realFull;
+  try {
+    realFull = fs.realpathSync(full);
+  } catch {
+    return null; // doesn't exist
+  }
+  if (realFull !== realRoot && !realFull.startsWith(realRoot + path.sep)) {
+    return null; // escapes the mods root
+  }
+  return realFull;
+}
+
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// ---------------------------------------------------------------------------
+// Crafty Controller server-name lookup (used to label mods instances)
+// ---------------------------------------------------------------------------
+
+const CRAFTY_API_BASE = process.env.CRAFTY_API_BASE || "https://crafty.pullen.co.za";
+const CRAFTY_API_TOKEN = process.env.CRAFTY_API_TOKEN || "";
+const CRAFTY_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const craftyCache = new Map(); // uuid -> { name, expires }
+
+function getCraftyServerName(uuid) {
+  const cached = craftyCache.get(uuid);
+  if (cached && cached.expires > Date.now()) {
+    return Promise.resolve(cached.name);
+  }
+
+  return new Promise((resolve) => {
+    const url = `${CRAFTY_API_BASE}/api/v2/servers/${encodeURIComponent(uuid)}`;
+    const req = https.get(
+      url,
+      {
+        headers: CRAFTY_API_TOKEN ? { Authorization: `Bearer ${CRAFTY_API_TOKEN}` } : {},
+        timeout: 5000
+      },
+      (res) => {
+        let data = "";
+        res.on("data", (chunk) => { data += chunk; });
+        res.on("end", () => {
+          let name = null;
+          try {
+            if (res.statusCode === 200) {
+              const parsed = JSON.parse(data);
+              name = parsed?.data?.server_name || null;
+            }
+          } catch {
+            name = null;
+          }
+          // Only cache definitive responses — network errors/timeouts are retried next time.
+          craftyCache.set(uuid, { name, expires: Date.now() + CRAFTY_CACHE_TTL_MS });
+          resolve(name);
+        });
+      }
+    );
+    req.on("timeout", () => req.destroy());
+    req.on("error", () => resolve(null));
+  });
+}
+
+// Top-level entries under MODS_ROOT are per-player work directories named by
+// UUID; only these are exposed for the instance picker (not raw root listing).
+app.get("/api/mods/instances", async (req, res) => {
+  const rootDir = resolveModsPath("");
+  if (!rootDir) {
+    return res.status(500).json({ error: "Mods root not found" });
+  }
+
+  try {
+    const entries = fs.readdirSync(rootDir, { withFileTypes: true });
+    const uuids = entries
+      .filter((entry) => entry.isDirectory() && UUID_REGEX.test(entry.name))
+      .map((entry) => entry.name);
+
+    const items = await Promise.all(
+      uuids.map(async (uuid) => ({
+        name: uuid,
+        serverName: await getCraftyServerName(uuid)
+      }))
+    );
+    items.sort((a, b) => (a.serverName || a.name).localeCompare(b.serverName || b.name));
+    res.json({ items });
+  } catch (e) {
+    console.error("Failed to list mods instances:", e);
+    res.status(500).json({ error: "Failed to list instances" });
+  }
+});
+
+app.get("/api/mods/list", (req, res) => {
+  const relDir = typeof req.query.dir === "string" ? req.query.dir : "";
+  const fullDir = resolveModsPath(relDir);
+
+  if (!fullDir) {
+    return res.status(400).json({ error: "Invalid directory" });
+  }
+
+  let stat;
+  try {
+    stat = fs.statSync(fullDir);
+  } catch {
+    return res.status(404).json({ error: "Not found" });
+  }
+  if (!stat.isDirectory()) {
+    return res.status(400).json({ error: "Not a directory" });
+  }
+
+  try {
+    const entries = fs.readdirSync(fullDir, { withFileTypes: true });
+    const items = entries.map((entry) => {
+      const entryRel = path.join(relDir, entry.name);
+      const entryFull = path.join(fullDir, entry.name);
+      const isDir = entry.isDirectory();
+      let size = null;
+      if (!isDir) {
+        try {
+          size = fs.statSync(entryFull).size;
+        } catch {
+          size = null;
+        }
+      }
+      return { name: entry.name, path: entryRel.split(path.sep).join("/"), type: isDir ? "dir" : "file", size };
+    });
+    items.sort((a, b) => (a.type === b.type ? a.name.localeCompare(b.name) : a.type === "dir" ? -1 : 1));
+    res.json({ dir: relDir.split(path.sep).join("/"), items });
+  } catch (e) {
+    console.error("Failed to list mods directory:", e);
+    res.status(500).json({ error: "Failed to list directory" });
+  }
+});
+
+app.post("/api/mods/download", (req, res) => {
+  const requested = Array.isArray(req.body.paths) ? req.body.paths : [];
+  if (requested.length === 0) {
+    return res.status(400).json({ error: "No paths provided" });
+  }
+
+  const resolved = [];
+  for (const relPath of requested) {
+    if (typeof relPath !== "string") {
+      return res.status(400).json({ error: "Invalid path" });
+    }
+    const full = resolveModsPath(relPath);
+    if (!full) {
+      return res.status(400).json({ error: `Invalid path: ${relPath}` });
+    }
+    const stat = fs.statSync(full);
+    resolved.push({ full, name: path.basename(full), isDir: stat.isDirectory() });
+  }
+
+  // A single selected file is sent as-is; anything else (multiple items,
+  // or a single directory) is bundled into a zip.
+  if (resolved.length === 1 && !resolved[0].isDir) {
+    return res.download(resolved[0].full, resolved[0].name);
+  }
+
+  const zipName = resolved.length === 1 ? `${resolved[0].name}.zip` : "mods-selection.zip";
+  res.setHeader("Content-Type", "application/zip");
+  res.setHeader("Content-Disposition", `attachment; filename="${zipName}"`);
+
+  const archive = archiver("zip", { zlib: { level: 9 } });
+  archive.on("error", (err) => {
+    console.error("Zip archive error:", err);
+    if (!res.headersSent) res.status(500);
+    res.end();
+  });
+  archive.pipe(res);
+
+  for (const item of resolved) {
+    if (item.isDir) {
+      archive.directory(item.full, item.name);
+    } else {
+      archive.file(item.full, { name: item.name });
+    }
+  }
+
+  archive.finalize();
+});
 
 // Simple rate limit
 const limiter = rateLimit({

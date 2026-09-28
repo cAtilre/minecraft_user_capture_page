@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mods — Minecraft</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="/minecraft_favicon_32x32.png" />
+  <link rel="icon" href="/minecraft_favicon.ico" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" />
+  <link rel="stylesheet" href="/style.css" />
+  <style>
+    /* ── Page-specific: mods file browser ── */
+    .card { max-width: 720px; }
+    .subtitle { margin-bottom: 20px; }
+    hr { margin: 16px 0 20px; }
+    #downloadBtn { padding: 10px 16px; font-size: 9px; }
+
+    .breadcrumbs {
+      font-size: 8px;
+      color: #7fff7f;
+      margin-bottom: 14px;
+      word-break: break-all;
+    }
+    .breadcrumbs a {
+      color: #00ff9f;
+      cursor: pointer;
+      text-decoration: underline;
+    }
+    .breadcrumbs a:hover { color: #5fffbf; }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+    .toolbar .left { display: flex; align-items: center; gap: 10px; font-size: 8px; color: #aaaacc; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 9px;
+    }
+    thead th {
+      text-align: left;
+      color: #7fff7f;
+      text-transform: uppercase;
+      font-size: 8px;
+      padding: 8px 6px;
+      border-bottom: 2px solid #00804f;
+    }
+    tbody td {
+      padding: 8px 6px;
+      border-bottom: 1px solid #22224a;
+      vertical-align: middle;
+    }
+    tbody tr:hover { background: rgba(0,255,159,0.05); }
+    td.col-check { width: 24px; }
+    td.col-size { color: #6a6a9a; white-space: nowrap; text-align: right; }
+    .name-link {
+      color: #e0e0e0;
+      cursor: pointer;
+      text-decoration: none;
+    }
+    .name-link.dir { color: #ffdd57; }
+    .name-link.dir::before { content: '\1F4C1\0020'; }
+    .name-link.file::before { content: '\1F4C4\0020'; }
+    .name-link:hover { text-decoration: underline; }
+
+    .empty, .loading, .error {
+      font-size: 9px;
+      color: #6a6a9a;
+      padding: 16px 0;
+    }
+    .error { color: #ff5555; }
+
+    .instance-uuid {
+      font-size: 7px;
+      color: #4a4a7a;
+      margin-top: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>&#x26C0; Mods</h2>
+    <p class="subtitle">&#x25BA; Browse &amp; download server mods</p>
+    <hr />
+
+    <div class="breadcrumbs" id="breadcrumbs"></div>
+
+    <div class="toolbar" id="toolbar" style="display:none;">
+      <div class="left">
+        <input type="checkbox" id="selectAll" />
+        <label for="selectAll">Select all</label>
+      </div>
+      <button id="downloadBtn" disabled>&#x25BA; Download selected</button>
+    </div>
+
+    <div id="listContainer">
+      <p class="loading">Loading…</p>
+    </div>
+
+    <p class="back-link" style="margin-top:24px;"><a href="/">&#8592; Back</a></p>
+  </div>
+
+  <script>
+    const breadcrumbsEl = document.getElementById("breadcrumbs");
+    const listContainer = document.getElementById("listContainer");
+    const toolbarEl      = document.getElementById("toolbar");
+    const selectAllEl   = document.getElementById("selectAll");
+    const downloadBtn   = document.getElementById("downloadBtn");
+
+    // An "instance" is a UUID-named work directory under /data/mods; users
+    // pick one, then browse/download files within its "mods" subdirectory.
+    let currentInstance = null; // uuid, or null while on the instance picker
+    let currentDir = "";
+    let selected = new Set();
+
+    function parseHash() {
+      const h = decodeURIComponent(location.hash.replace(/^#/, ""));
+      return h || "";
+    }
+
+    // Breadcrumbs collapse the "<uuid>/mods" prefix into a single "instance" crumb.
+    function renderBreadcrumbs(instance, dir) {
+      if (!instance) {
+        breadcrumbsEl.innerHTML = "Instances";
+        return;
+      }
+      const instanceRoot = `${instance}/mods`;
+      const rest = dir === instanceRoot ? "" : dir.slice(instanceRoot.length + 1);
+      const parts = rest ? rest.split("/") : [];
+
+      let acc = instanceRoot;
+      const links = [
+        `<a data-dir="">Instances</a>`,
+        `<a data-dir="${instanceRoot}">${instance}</a>`
+      ];
+      for (const part of parts) {
+        acc = `${acc}/${part}`;
+        links.push(`<a data-dir="${acc}">${part}</a>`);
+      }
+      breadcrumbsEl.innerHTML = links.join(' <span style="color:#3a3a6a;">/</span> ');
+      breadcrumbsEl.querySelectorAll("a").forEach(a => {
+        a.addEventListener("click", () => navigate(a.dataset.dir));
+      });
+    }
+
+    function formatSize(bytes) {
+      if (bytes === null || bytes === undefined) return "";
+      if (bytes < 1024) return `${bytes} B`;
+      const units = ["KB", "MB", "GB", "TB"];
+      let val = bytes / 1024, i = 0;
+      while (val >= 1024 && i < units.length - 1) { val /= 1024; i++; }
+      return `${val.toFixed(1)} ${units[i]}`;
+    }
+
+    function updateToolbarState() {
+      downloadBtn.disabled = selected.size === 0;
+    }
+
+    function navigate(dir) {
+      location.hash = encodeURIComponent(dir);
+    }
+
+    async function loadInstances() {
+      currentInstance = null;
+      currentDir = "";
+      selected = new Set();
+      toolbarEl.style.display = "none";
+      renderBreadcrumbs(null, "");
+      listContainer.innerHTML = '<p class="loading">Loading…</p>';
+
+      let data;
+      try {
+        const resp = await fetch("/api/mods/instances");
+        if (!resp.ok) {
+          const body = await resp.json().catch(() => ({}));
+          throw new Error(body.error || `Request failed (${resp.status})`);
+        }
+        data = await resp.json();
+      } catch (e) {
+        listContainer.innerHTML = `<p class="error">Failed to load instances: ${e.message}</p>`;
+        return;
+      }
+
+      if (data.items.length === 0) {
+        listContainer.innerHTML = '<p class="empty">No instances found.</p>';
+        return;
+      }
+
+      const rows = data.items.map(item => `
+        <tr>
+          <td>
+            <span class="name-link dir" data-instance="${item.name}" title="${item.name}">${item.serverName || item.name}</span>
+            ${item.serverName ? `<div class="instance-uuid">${item.name}</div>` : ""}
+          </td>
+        </tr>
+      `).join("");
+
+      listContainer.innerHTML = `
+        <table>
+          <thead><tr><th>Instance</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      `;
+
+      listContainer.querySelectorAll("[data-instance]").forEach(el => {
+        el.addEventListener("click", () => navigate(`${el.dataset.instance}/mods`));
+      });
+    }
+
+    async function loadDir(dir) {
+      const instance = dir.split("/")[0];
+      currentInstance = instance;
+      currentDir = dir;
+      selected = new Set();
+      toolbarEl.style.display = "flex";
+      renderBreadcrumbs(instance, dir);
+      listContainer.innerHTML = '<p class="loading">Loading…</p>';
+
+      let data;
+      try {
+        const resp = await fetch(`/api/mods/list?dir=${encodeURIComponent(dir)}`);
+        if (!resp.ok) {
+          const body = await resp.json().catch(() => ({}));
+          throw new Error(body.error || `Request failed (${resp.status})`);
+        }
+        data = await resp.json();
+      } catch (e) {
+        listContainer.innerHTML = `<p class="error">Failed to load directory: ${e.message}</p>`;
+        return;
+      }
+
+      if (data.items.length === 0) {
+        listContainer.innerHTML = '<p class="empty">This directory is empty.</p>';
+        selectAllEl.checked = false;
+        return;
+      }
+
+      const rows = data.items.map(item => `
+        <tr data-path="${item.path}">
+          <td class="col-check"><input type="checkbox" class="row-check" data-path="${item.path}" /></td>
+          <td>
+            <span class="name-link ${item.type}" data-path="${item.path}" data-type="${item.type}">${item.name}</span>
+          </td>
+          <td class="col-size">${item.type === "dir" ? "" : formatSize(item.size)}</td>
+        </tr>
+      `).join("");
+
+      listContainer.innerHTML = `
+        <table>
+          <thead><tr><th></th><th>Name</th><th style="text-align:right;">Size</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      `;
+
+      listContainer.querySelectorAll(".name-link").forEach(el => {
+        el.addEventListener("click", () => {
+          if (el.dataset.type === "dir") {
+            navigate(el.dataset.path);
+          } else {
+            downloadPaths([el.dataset.path]);
+          }
+        });
+      });
+
+      listContainer.querySelectorAll(".row-check").forEach(cb => {
+        cb.addEventListener("change", () => {
+          if (cb.checked) selected.add(cb.dataset.path);
+          else selected.delete(cb.dataset.path);
+          selectAllEl.checked = selected.size === data.items.length;
+          updateToolbarState();
+        });
+      });
+
+      selectAllEl.checked = false;
+      updateToolbarState();
+    }
+
+    selectAllEl.addEventListener("change", () => {
+      const checked = selectAllEl.checked;
+      listContainer.querySelectorAll(".row-check").forEach(cb => {
+        cb.checked = checked;
+        if (checked) selected.add(cb.dataset.path);
+        else selected.delete(cb.dataset.path);
+      });
+      updateToolbarState();
+    });
+
+    async function downloadPaths(paths) {
+      try {
+        const resp = await fetch("/api/mods/download", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ paths })
+        });
+        if (!resp.ok) {
+          const body = await resp.json().catch(() => ({}));
+          throw new Error(body.error || `Download failed (${resp.status})`);
+        }
+        const disposition = resp.headers.get("Content-Disposition") || "";
+        const match = disposition.match(/filename="?([^"]+)"?/);
+        const filename = match ? match[1] : "download";
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      } catch (e) {
+        alert(`Download failed: ${e.message}`);
+      }
+    }
+
+    downloadBtn.addEventListener("click", () => {
+      if (selected.size > 0) downloadPaths([...selected]);
+    });
+
+    function route() {
+      const dir = parseHash();
+      if (!dir) {
+        loadInstances();
+      } else {
+        loadDir(dir);
+      }
+    }
+
+    window.addEventListener("hashchange", route);
+    route();
+  </script>
+</body>
+</html>

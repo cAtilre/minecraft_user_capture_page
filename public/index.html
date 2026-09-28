@@ -4,137 +4,16 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Minecraft Access Request</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="/minecraft_favicon_32x32.png" />
+  <link rel="icon" href="/minecraft_favicon.ico" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" />
+  <link rel="stylesheet" href="/style.css" />
   <style>
-    /* ── 8-bit base ── */
-    *, *::before, *::after { box-sizing: border-box; }
+    /* ── Page-specific: access request form ── */
 
-    body {
-      font-family: 'Press Start 2P', monospace;
-      font-size: 11px;
-      line-height: 1.8;
-      background: #1a1a2e;
-      color: #e0e0e0;
-      margin: 0;
-      padding: 32px 16px 64px;
-      image-rendering: pixelated;
-    }
-
-    /* Scanline overlay */
-    body::after {
-      content: '';
-      position: fixed;
-      inset: 0;
-      pointer-events: none;
-      background: repeating-linear-gradient(
-        to bottom,
-        transparent 0px,
-        transparent 3px,
-        rgba(0,0,0,0.18) 3px,
-        rgba(0,0,0,0.18) 4px
-      );
-      z-index: 999;
-    }
-
-    /* Card */
-    .card {
-      max-width: 560px;
-      margin: 0 auto;
-      background: #16213e;
-      border: 4px solid #00ff9f;
-      box-shadow: 6px 6px 0 #00b36e, inset 0 0 32px rgba(0,255,159,0.04);
-      padding: 28px 24px 32px;
-    }
-
-    /* Pixel-art heading */
-    h2 {
-      font-size: 13px;
-      color: #00ff9f;
-      text-shadow: 3px 3px 0 #005c38;
-      margin: 0 0 6px;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-    }
-    .subtitle {
-      font-size: 8px;
-      color: #6a6a9a;
-      margin: 0 0 28px;
-      text-transform: uppercase;
-    }
-
-    /* Sections */
-    .section { margin-top: 22px; }
-
-    label {
-      display: block;
-      font-size: 9px;
-      color: #7fff7f;
-      margin-bottom: 6px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-
-    /* Pixel inputs */
-    input[type="text"] {
-      width: 100%;
-      padding: 8px 10px;
-      font-family: 'Press Start 2P', monospace;
-      font-size: 10px;
-      background: #0d0d1a;
-      color: #00ff9f;
-      border: 3px solid #00804f;
-      outline: none;
-      caret-color: #00ff9f;
-      transition: border-color 0.1s;
-    }
-    input[type="text"]:focus { border-color: #00ff9f; box-shadow: 0 0 0 2px rgba(0,255,159,0.2); }
-    input[type="text"]::placeholder { color: #2a4a3a; }
-
-    .hint {
-      margin: 5px 0 0;
-      font-size: 7px;
-      color: #5a7a6a;
-      line-height: 1.6;
-    }
-    code {
-      color: #ffdd57;
-      background: #222;
-      padding: 1px 4px;
-      font-family: 'Press Start 2P', monospace;
-      font-size: 7px;
-    }
-
-    /* Button — pixel style */
-    button {
-      margin-top: 28px;
-      padding: 12px 24px;
-      font-family: 'Press Start 2P', monospace;
-      font-size: 10px;
-      color: #1a1a2e;
-      background: #00ff9f;
-      border: none;
-      outline: 3px solid #00b36e;
-      box-shadow: 4px 4px 0 #005c38;
-      cursor: pointer;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      transition: transform 0.05s, box-shadow 0.05s;
-    }
-    button:hover  { background: #5fffbf; }
-    button:active { transform: translate(4px,4px); box-shadow: none; }
-
-    /* Error */
-    #formError {
-      display: none;
-      margin-top: 14px;
-      padding: 8px 10px;
-      font-size: 8px;
-      color: #ff5555;
-      border: 2px solid #ff5555;
-      background: #2a0a0a;
-      text-transform: uppercase;
-    }
+    /* Submit button sits further from the form fields than other pages' buttons */
+    #accessForm button { margin-top: 28px; }
 
     /* ── Collapsible advanced section ── */
     .advanced-toggle {
@@ -200,14 +79,6 @@
       cursor: pointer;
       text-transform: uppercase;
     }
-
-    /* Pixel divider */
-    hr {
-      border: none;
-      border-top: 3px solid #00804f;
-      margin: 24px 0 0;
-      box-shadow: 0 2px 0 #003322;
-    }
   </style>
 </head>
 <body>
@@ -264,6 +135,7 @@
     <div id="formError"></div>
     <button type="submit">&#x25BA; Submit</button>
   </form>
+  <p style="margin-top:20px;"><a href="/mods.html" style="color:#6a6aaa; font-size:8px;">&#x25BA; Browse server mods</a></p>
   </div>
 
   <script>
