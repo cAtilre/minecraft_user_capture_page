@@ -8,8 +8,10 @@ const archiver = require("archiver");
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-// Trust proxy headers from nginx
-app.set("trust proxy", true);
+// Trust exactly one hop (the nginx reverse proxy sitting directly in front of
+// this container) so X-Forwarded-For is honored without letting arbitrary
+// clients spoof it and bypass rate limiting.
+app.set("trust proxy", 1);
 
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
@@ -58,15 +60,28 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 
 const CRAFTY_API_BASE = process.env.CRAFTY_API_BASE || "https://crafty.pullen.co.za";
 const CRAFTY_API_TOKEN = process.env.CRAFTY_API_TOKEN || "";
-const CRAFTY_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const CRAFTY_CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
 const craftyCache = new Map(); // uuid -> { name, expires }
 
+if (!CRAFTY_API_TOKEN) {
+  console.warn("CRAFTY_API_TOKEN is not set — mods instances will show raw UUIDs instead of server names.");
+}
+
+// Stale-while-revalidate: once an entry exists it is always served from cache;
+// a stale entry triggers a background refresh for next time instead of blocking.
 function getCraftyServerName(uuid) {
   const cached = craftyCache.get(uuid);
-  if (cached && cached.expires > Date.now()) {
+  if (cached) {
+    if (cached.expires <= Date.now()) {
+      fetchCraftyServerName(uuid);
+    }
     return Promise.resolve(cached.name);
   }
 
+  return fetchCraftyServerName(uuid);
+}
+
+function fetchCraftyServerName(uuid) {
   return new Promise((resolve) => {
     const url = `${CRAFTY_API_BASE}/api/v2/servers/${encodeURIComponent(uuid)}`;
     const req = https.get(
@@ -80,13 +95,15 @@ function getCraftyServerName(uuid) {
         res.on("data", (chunk) => { data += chunk; });
         res.on("end", () => {
           let name = null;
-          try {
-            if (res.statusCode === 200) {
+          if (res.statusCode === 200) {
+            try {
               const parsed = JSON.parse(data);
               name = parsed?.data?.server_name || null;
+            } catch (e) {
+              console.error(`Crafty lookup for ${uuid}: failed to parse response:`, e.message);
             }
-          } catch {
-            name = null;
+          } else {
+            console.error(`Crafty lookup for ${uuid}: HTTP ${res.statusCode} — ${data.slice(0, 200)}`);
           }
           // Only cache definitive responses — network errors/timeouts are retried next time.
           craftyCache.set(uuid, { name, expires: Date.now() + CRAFTY_CACHE_TTL_MS });
@@ -95,7 +112,10 @@ function getCraftyServerName(uuid) {
       }
     );
     req.on("timeout", () => req.destroy());
-    req.on("error", () => resolve(null));
+    req.on("error", (e) => {
+      console.error(`Crafty lookup for ${uuid}: request failed:`, e.message);
+      resolve(null);
+    });
   });
 }
 
