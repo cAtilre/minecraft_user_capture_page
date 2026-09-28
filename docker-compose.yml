@@ -7,6 +7,12 @@ services:
       # Mount the logs directory from the host so players.json is accessible
       # to the cron script running outside the container — same as production.
       - ./logs:/app/logs
+      # Mount the mods directory read-only so it can be browsed/downloaded via the web UI.
+      - ./mods:/data/mods:ro
     environment:
       - PORT=8080
+      - CRAFTY_API_BASE=https://crafty.pullen.co.za
+      - CRAFTY_API_TOKEN=${CRAFTY_API_TOKEN}
     restart: unless-stopped
+
+
