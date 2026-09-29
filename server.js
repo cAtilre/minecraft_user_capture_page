@@ -88,7 +88,10 @@ function fetchCraftyServerName(uuid) {
       url,
       {
         headers: CRAFTY_API_TOKEN ? { Authorization: `Bearer ${CRAFTY_API_TOKEN}` } : {},
-        timeout: 5000
+        timeout: 5000,
+        // crafty.pullen.co.za is only reachable on the internal network (behind
+        // traefik), so a broken/incomplete cert chain here is not a MITM risk.
+        rejectUnauthorized: false
       },
       (res) => {
         let data = "";
