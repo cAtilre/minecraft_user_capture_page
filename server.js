@@ -88,7 +88,7 @@ function fetchCraftyServerName(uuid) {
       url,
       {
         headers: CRAFTY_API_TOKEN ? { Authorization: `Bearer ${CRAFTY_API_TOKEN}` } : {},
-        timeout: 5000,
+        // timeout: 5000,
         // crafty.pullen.co.za is only reachable on the internal network (behind
         // traefik), so a broken/incomplete cert chain here is not a MITM risk.
         rejectUnauthorized: false
@@ -262,6 +262,12 @@ function getClientIp(req) {
   return req.ip || "unknown";
 }
 
+// X-Real-IP is set by some reverse proxies (e.g. pfsense/haproxy) in addition
+// to or instead of X-Forwarded-For; capture it separately for the audit log.
+function getRealIpHeader(req) {
+  return req.get("X-Real-IP") || null;
+}
+
 // ---------------------------------------------------------------------------
 // Mojang UUID lookup
 // ---------------------------------------------------------------------------
@@ -297,6 +303,10 @@ function getMojangUUID(username) {
 // JSON player store (upsert by UUID, keyed by current Minecraft username)
 // ---------------------------------------------------------------------------
 
+// Sentinel stored in the uuid field when Mojang has no account for the submitted
+// username, so the access attempt is still captured instead of being dropped.
+const UUID_NOT_FOUND = "NOT_FOUND";
+
 function upsertPlayer(record) {
   let db = {};
   if (fs.existsSync(playersFile)) {
@@ -309,11 +319,15 @@ function upsertPlayer(record) {
 
   // If this UUID already exists under a different username (player renamed their
   // Minecraft account), remove the stale entry before writing the new one.
-  for (const [key, existing] of Object.entries(db)) {
-    if (existing.uuid === record.uuid && key !== record.username) {
-      console.log(`UUID ${record.uuid}: username changed ${key} → ${record.username}`);
-      delete db[key];
-      break;
+  // Skip this for the "not found" sentinel — it's shared by every unverified
+  // username, so matching on it would wipe out unrelated entries.
+  if (record.uuid !== UUID_NOT_FOUND) {
+    for (const [key, existing] of Object.entries(db)) {
+      if (existing.uuid === record.uuid && key !== record.username) {
+        console.log(`UUID ${record.uuid}: username changed ${key} → ${record.username}`);
+        delete db[key];
+        break;
+      }
     }
   }
 
@@ -370,23 +384,22 @@ app.post("/submit", async (req, res) => {
     return res.status(400).send("Error: " + errors.join("; "));
   }
 
-  // Mojang UUID verification
+  // Mojang UUID verification — a miss no longer aborts the request; it's still
+  // logged (with a sentinel uuid) so unknown-username access attempts are auditable.
   const uuid = await getMojangUUID(username);
-  if (!uuid) {
-    return res.status(400).send("Error: Minecraft username not found in Mojang's database");
-  }
+  const uuidNotFound = !uuid;
 
   const record = {
     username,
     realName,
-    uuid,
+    uuid: uuid || UUID_NOT_FOUND,
     ...(validIp   ? { ip:   validIp   } : {}),
     ...(validFqdn ? { fqdn: validFqdn } : {}),
     lastUpdated: new Date().toISOString()
   };
 
   // Audit log (one JSON entry per line)
-  const logEntry = { ...record, clientIp: getClientIp(req) };
+  const logEntry = { ...record, clientIp: getClientIp(req), xRealIp: getRealIpHeader(req) };
   fs.appendFile(logFile, JSON.stringify(logEntry) + "\n", err => {
     if (err) console.error("Audit log write failed:", err);
   });
@@ -397,6 +410,10 @@ app.post("/submit", async (req, res) => {
   } catch (e) {
     console.error("Failed to write players.json:", e);
     return res.status(500).send("Error saving your information. Please try again.");
+  }
+
+  if (uuidNotFound) {
+    return res.status(404).send("Warning: Minecraft username not found in Mojang's database — request logged anyway");
   }
 
   res.status(200).send("ok");
